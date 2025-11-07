@@ -1,0 +1,12 @@
+.DS_Store
+Icon?
+*.swp
+*.swo
+*.tmp
+*.bak
+*.lock
+*.scptd
+*.app
+build/
+tmp/
+
