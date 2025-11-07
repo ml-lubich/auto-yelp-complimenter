@@ -6,6 +6,10 @@ property URL_FILTER : "yelp.com" -- operate only on these tabs
 property MODAL_OPEN_DELAY : 2 -- seconds to wait after clicking "Compliment"
 property BEFORE_SEND_DELAY : 5 -- seconds to wait after filling text before clicking Send
 property DELAY_BETWEEN_TABS : 5 -- polite gap between tabs (seconds)
+property MAX_SEND_RETRIES : 3 -- how many times to retry after modal errors
+property POST_SEND_CHECK_DELAY : 1 -- seconds to wait before checking modal for errors
+property POST_REFRESH_DELAY : 6 -- seconds to wait after refresh before retrying
+property RETRY_DELAY : 3 -- buffer between retry attempts
 
 set defaultMsg to "Hi {name}, love your reviews!" & return & "Have a good day!" & return & "" & return & "" & return & "" & return & "" & return & ""
 
@@ -157,6 +161,11 @@ on jsClickModalSend()
 })();"
 end jsClickModalSend
 
+-- Detect "Oops, something went wrong" message inside the modal
+on jsCheckModalError()
+	return "(function(){\n  const portal = document.getElementById('modal-portal-container');\n  const dialog = portal ? portal.querySelector('[role=\"dialog\"]') : document.querySelector('[role=\"dialog\"][data-overlay=\"true\"]');\n  if(!dialog) return 'modal-missing';\n  const modal = dialog.querySelector('[aria-live=\"polite\"][role=\"region\"]') || dialog;\n  if(!modal) return 'modal-missing';\n  const text = ((modal.innerText||modal.textContent||'')+'').trim();\n  if(/oops\\s+something\\s+went\\s+wrong/i.test(text)) return 'error-oops';\n  return 'ok';\n})();"
+end jsCheckModalError
+
 -- ===== Main =====
 tell application "Google Chrome"
 	activate
@@ -217,37 +226,74 @@ tell application "Google Chrome"
 					set active tab index of w to ti
 					delay 0.4
 					
-					-- 1) click "Compliment"
-					set c1 to execute t javascript (my jsClickCompliment())
-					if c1 is "clicked" then
-						-- 2) wait for modal to appear (exactly as requested)
-						delay MODAL_OPEN_DELAY
+					set tabTitle to title of t
+					set nameFull to my extractNameFromTitle(tabTitle)
+					set firstName to my firstWordOnly(nameFull)
+					set personalizedMessage to my fillTemplate(messageTemplate, firstName)
+					set sentSuccessfully to false
+					repeat with attempt from 1 to MAX_SEND_RETRIES
+						if attempt > 1 then log "Retry attempt " & attempt & " for tab " & ti & " in window " & wi
+						set shouldRetry to false
 						
-						-- 3) personalize first name and fill text
-						set tabTitle to title of t
-						set nameFull to my extractNameFromTitle(tabTitle)
-						set firstName to my firstWordOnly(nameFull)
-						set personalizedMessage to my fillTemplate(messageTemplate, firstName)
-						set c2 to execute t javascript (my jsFillComplimentText(personalizedMessage))
-						if c2 is "filled" then
-							log "Compliment message personalized to: " & personalizedMessage
+						-- 1) click "Compliment"
+						set c1 to execute t javascript (my jsClickCompliment())
+						if c1 is "clicked" then
+							-- 2) wait for modal to appear (exactly as requested)
+							delay MODAL_OPEN_DELAY
 							
-							-- 4) wait before sending (exactly as requested)
-							delay BEFORE_SEND_DELAY
-							
-							-- 5) click "Send" on the modal
-							set c3 to execute t javascript (my jsClickModalSend())
-							if c3 is "sent" then
-								log "Compliment sent for tab " & ti & " in window " & wi
+							-- 3) fill text with personalization
+							set c2 to execute t javascript (my jsFillComplimentText(personalizedMessage))
+							if c2 is "filled" then
+								log "Compliment message personalized to: " & personalizedMessage
+								
+								-- 4) wait before sending (exactly as requested)
+								delay BEFORE_SEND_DELAY
+								
+								-- 5) click "Send" on the modal
+								set c3 to execute t javascript (my jsClickModalSend())
+								if c3 is "sent" then
+									delay POST_SEND_CHECK_DELAY
+									set c4 to execute t javascript (my jsCheckModalError())
+									if c4 is "error-oops" then
+										log "Modal reported an error after send for tab " & ti & " (" & firstName & ")"
+										if attempt < MAX_SEND_RETRIES then
+											log "Refreshing tab and retrying after delay"
+											set shouldRetry to true
+										else
+											log "Giving up on tab " & ti & " after modal errors"
+										end if
+									else
+										log "Compliment sent successfully for tab " & ti & " in window " & wi
+										set sentSuccessfully to true
+										exit repeat
+									end if
+								else
+									log "Compliment send failed for tab " & ti & " (status: " & c3 & ")"
+									if attempt < MAX_SEND_RETRIES then set shouldRetry to true
+								end if
 							else
-								log "Compliment send failed for tab " & ti & " (status: " & c3 & ")"
+								log "Compliment text not filled for tab " & ti & " (status: " & c2 & ")"
+								if attempt < MAX_SEND_RETRIES then set shouldRetry to true
 							end if
 						else
-							log "Compliment text not filled for tab " & ti & " (status: " & c2 & ")"
+							log "Compliment button not clicked for tab " & ti & " (status: " & c1 & ")"
+							if attempt < MAX_SEND_RETRIES then set shouldRetry to true
 						end if
-					else
-						log "Compliment button not clicked for tab " & ti & " (status: " & c1 & ")"
-					end if
+						
+					if sentSuccessfully is false then
+						if shouldRetry and attempt < MAX_SEND_RETRIES then
+							log "Retrying tab " & ti & " in window " & wi & " after delay"
+							reload t
+							delay POST_REFRESH_DELAY
+							delay RETRY_DELAY
+							else if attempt = MAX_SEND_RETRIES then
+								log "Failed to send compliment to " & firstName & " after " & MAX_SEND_RETRIES & " attempts"
+								exit repeat
+							else
+								exit repeat
+							end if
+						end if
+					end repeat
 					
 					-- polite spacing before next tab
 					delay DELAY_BETWEEN_TABS

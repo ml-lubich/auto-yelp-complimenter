@@ -11,6 +11,7 @@
 - [Troubleshooting](#troubleshooting)
 - [Safety, Privacy, and Etiquette](#safety-privacy-and-etiquette)
 - [Roadmap Ideas](#roadmap-ideas)
+- [License](#license)
 
 ## Overview
 `auto_yelp_complimenter.scpt` is an AppleScript that runs directly against open Yelp tabs in Google Chrome. It automates the process of sending compliments to reviewers—no Yelp API, browser plugins, or keyloggers required. By interacting with the existing Yelp web interface, it keeps the experience human-friendly while still saving you time.
@@ -20,6 +21,7 @@
 - **Personalized compliments**: Extracts the reviewer's first name from the tab title and injects it into your message template.
 - **Modal flow aware**: Opens the compliment modal, waits for it to appear, fills in your message, and submits it just like you would manually.
 - **Safety pacing**: Adds configurable delays between actions and between tabs for a more natural cadence.
+- **Resilient retries**: Detects the "Oops, something went wrong" modal error, refreshes the tab, and retries up to three times before giving up.
 - **Window filtering**: Targets only Chrome tabs whose URLs contain `yelp.com`, keeping everything focused.
 
 ## How It Works
@@ -65,6 +67,7 @@ You can tune behavior by editing the properties near the top of the script:
 - **Modal not found**: Yelp may have updated its markup. Inspect the page and adjust query selectors in the helper functions if needed.
 - **Compliment template error**: Ensure the modal text area accepts your message. Avoid excessively long text blocks.
 - **Script stops early**: Check the Script Editor Event Log for entries such as `no-compliment`, `no-dialog`, or `no-send` to pinpoint the failing step.
+- **Repeated "Oops" modal**: The script retries the compliment up to three times. If all attempts fail, it logs the reviewer as skipped so you can revisit manually.
 
 ## Safety, Privacy, and Etiquette
 - Respect Yelp’s community guidelines and rate limits.
@@ -77,4 +80,7 @@ You can tune behavior by editing the properties near the top of the script:
 - Randomized delay ranges for even more human-like pacing.
 - Support for Safari or Chromium-based browsers beyond Chrome.
 - GUI wrapper for easier configuration and scheduling.
+
+## License
+This project is released under the [Creative Commons Attribution-NonCommercial 4.0 International License](LICENSE). You are welcome to share and adapt the script for educational or personal projects, but commercial use is not permitted. Please credit **Misha Lubich** ([GitHub](https://github.com/ml-lubich)).
 
